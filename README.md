@@ -27,11 +27,17 @@ python3 soc_triage.py
 # Save reports + archive
 python3 soc_triage.py -o ./reports
 
+# Watch mode — monitor for changes every N seconds
+python3 soc_triage.py -w 60
+
 # JSON output (for automation / SIEM integration)
 python3 soc_triage.py --json
 
 # Save reports and output JSON
 python3 soc_triage.py -o ./reports --json
+
+# Watch mode with JSON output
+python3 soc_triage.py -w 300 --json -o ./monitor
 ```
 
 ## Output
