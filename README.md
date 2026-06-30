@@ -1,5 +1,6 @@
 # soc-triage
 
+[![Ko-fi](https://img.shields.io/badge/Sponsor-Ko--fi-FF5E5B?style=flat-square&logo=ko-fi)](https://ko-fi.com/gnaixnaij)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Lint](https://img.shields.io/github/actions/workflow/status/gnaixnaij/soc-triage/lint.yml?branch=main&label=lint&logo=github)](https://github.com/gnaixnaij/soc-triage/actions)
 [![Release](https://img.shields.io/github/v/release/gnaixnaij/soc-triage?logo=github)](https://github.com/gnaixnaij/soc-triage/releases)
@@ -74,6 +75,10 @@ Designed for SOC analysts and incident responders who need a fast snapshot of a 
 
 - Python 3.6+
 - Linux with `ss`, `ps`, `last`, `find`, `crontab`
+
+## Support
+
+If this tool helps in your IR work, [buy me a coffee](https://ko-fi.com/gnaixnaij).
 
 ## License
 
