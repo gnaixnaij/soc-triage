@@ -15,6 +15,7 @@ RED = "\033[91m"
 YELLOW = "\033[93m"
 CYAN = "\033[96m"
 BOLD = "\033[1m"
+DIM = "\033[2m"
 RESET = "\033[0m"
 
 REPORT_DIR = None
@@ -30,8 +31,11 @@ def c(text, color=None, bold=False):
     return text
 
 
+QUIET = False
+
+
 def section(title):
-    if not JSON_MODE:
+    if not JSON_MODE and not QUIET:
         print(f"\n{c('━' * 60, CYAN)}")
         print(f"{c(f'  {title}', CYAN, bold=True)}")
         print(f"{c('━' * 60, CYAN)}")
@@ -242,9 +246,10 @@ def save_report(target_dir):
     return json_path, archive
 
 
-def run_all(target_dir=None, json_mode=False):
-    global JSON_MODE, REPORT_DIR, DATA
+def run_all(target_dir=None, json_mode=False, quiet=False):
+    global JSON_MODE, REPORT_DIR, DATA, QUIET
     JSON_MODE = json_mode
+    QUIET = quiet
     REPORT_DIR = target_dir
     DATA = {"timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
@@ -258,20 +263,22 @@ def run_all(target_dir=None, json_mode=False):
         ("cron_jobs", cron_jobs),
     ]
 
-    if not JSON_MODE:
-        print(c(f"\n{'=' * 60}", BOLD))
-        print(c("  SOC TRIAGE REPORT", BOLD))
-        print(c(f"  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", BOLD))
-        print(c(f"{'=' * 60}", BOLD))
+    if not quiet:
+        if not JSON_MODE:
+            print(c(f"\n{'=' * 60}", BOLD))
+            print(c("  SOC TRIAGE REPORT", BOLD))
+            print(c(f"  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", BOLD))
+            print(c(f"{'=' * 60}", BOLD))
 
     for name, func in sections_list:
         result = func()
-        out(result)
+        if not quiet:
+            out(result)
 
-    if JSON_MODE:
+    if JSON_MODE and not quiet:
         print(json.dumps(DATA, indent=2))
 
-    if not JSON_MODE:
+    if not quiet and not JSON_MODE:
         print()
         print(c("─" * 60, CYAN))
         print(c("  Triage complete.", GREEN))
@@ -285,6 +292,30 @@ def run_all(target_dir=None, json_mode=False):
     return DATA
 
 
+def watch_mode(target_dir, interval, json_mode):
+    import time
+    print(c(f"  Watch mode enabled — checking every {interval}s", YELLOW))
+    print(c("  Press Ctrl+C to stop", YELLOW))
+    print()
+    baseline = None
+    while True:
+        result = run_all(target_dir=target_dir, json_mode=json_mode, quiet=baseline is not None)
+        if baseline is None:
+            baseline = json.dumps(result, sort_keys=True, default=str)
+            if not json_mode:
+                print(c("  Baseline captured. Monitoring for changes...", CYAN))
+        else:
+            current = json.dumps(result, sort_keys=True, default=str)
+            if current != baseline:
+                print()
+                print(c("  ⚠ CHANGE DETECTED", RED, bold=True))
+                print(c(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", YELLOW))
+        print()
+        if not json_mode:
+            print(c(f"  Next check in {interval}s...", DIM))
+        time.sleep(interval)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Quick host triage for incident response",
@@ -293,12 +324,19 @@ def main():
   soc_triage.py                          # Terminal output only
   soc_triage.py -o ./reports             # Save reports to directory
   soc_triage.py --json                   # JSON output to stdout
+  soc_triage.py -w 60                    # Watch mode, check every 60s
   soc_triage.py -o ./reports --json      # Both JSON file and terminal output
 """)
     parser.add_argument("-o", "--output", help="Output directory for report files")
     parser.add_argument("--json", action="store_true", help="Output as JSON to stdout")
+    parser.add_argument("-w", "--watch", type=int, metavar="SECONDS",
+                        help="Watch mode: run continuously at the given interval")
     args = parser.parse_args()
-    run_all(target_dir=args.output, json_mode=args.json)
+
+    if args.watch:
+        watch_mode(args.output, args.watch, args.json)
+    else:
+        run_all(target_dir=args.output, json_mode=args.json)
 
 
 if __name__ == "__main__":
