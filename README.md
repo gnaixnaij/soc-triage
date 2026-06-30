@@ -1,15 +1,19 @@
 # soc-triage
 
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Lint](https://img.shields.io/github/actions/workflow/status/gnaixnaij/soc-triage/lint.yml?branch=main&label=lint&logo=github)](https://github.com/gnaixnaij/soc-triage/actions)
+[![Python](https://img.shields.io/badge/python-3.6+-3776AB?logo=python&logoColor=white)](https://python.org)
+
 Quick host triage toolkit for incident response. Collects system state information for initial compromise assessment.
 
 ## What it checks
 
 | Section | Data Collected |
 |---------|---------------|
-| Host Information | Hostname, OS, kernel, uptime, timestamp |
+| Host Information | Hostname, OS, kernel, uptime |
 | Listening Ports | All TCP listening ports with processes |
 | Established Connections | Active outbound connections |
-| Suspicious Processes | Reverse shells, netcat, cryptominers, etc. |
+| Suspicious Processes | Reverse shells, netcat, cryptominers |
 | Recent Logins | Last 20 login records |
 | SUID Binaries | Binaries with setuid bit set |
 | Cron Jobs | User and system scheduled tasks |
@@ -17,18 +21,43 @@ Quick host triage toolkit for incident response. Collects system state informati
 ## Usage
 
 ```bash
-# Quick triage (stdout only)
+# Terminal output only
 python3 soc_triage.py
 
-# Save reports to directory (also creates .tar.gz archive)
+# Save reports + archive
 python3 soc_triage.py -o ./reports
+
+# JSON output (for automation / SIEM integration)
+python3 soc_triage.py --json
+
+# Save reports and output JSON
+python3 soc_triage.py -o ./reports --json
 ```
 
 ## Output
 
-- Color-coded terminal output for rapid visual triage
-- Individual `.txt` reports per section when using `-o`
-- Tarball archive for easy exfiltration or evidence preservation
+- **Terminal:** Color-coded output for rapid visual triage
+- **JSON:** Structured data for automation, SIEM ingestion, or further processing
+- **Files:** Individual `.txt` reports per section + `.tar.gz` archive for exfiltration
+
+## JSON Output Example
+
+```json
+{
+  "timestamp": "2026-06-29 22:50:27",
+  "host_info": {
+    "hostname": "kali",
+    "os": "Kali GNU/Linux Rolling",
+    "kernel": "6.18.12+kali-amd64",
+    "uptime": "up 2 hours, 1 minute"
+  },
+  "listening_ports": [
+    {"address": "127.0.0.1:11434", "process": ""},
+    {"address": "0.0.0.0:22", "process": "sshd"}
+  ],
+  "suid_binaries": ["/usr/bin/sudo", "/usr/bin/passwd", "..."]
+}
+```
 
 ## Use Case
 
@@ -37,7 +66,7 @@ Designed for SOC analysts and incident responders who need a fast snapshot of a 
 ## Requirements
 
 - Python 3.6+
-- Linux with `ss`, `ps`, `last`, `find`, `crontab` (standard on any Linux distro)
+- Linux with `ss`, `ps`, `last`, `find`, `crontab`
 
 ## License
 

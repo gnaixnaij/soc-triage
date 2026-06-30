@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import shutil
+import argparse
 from datetime import datetime
 from pathlib import Path
 
@@ -17,6 +18,9 @@ BOLD = "\033[1m"
 RESET = "\033[0m"
 
 REPORT_DIR = None
+JSON_MODE = False
+DATA = {}
+
 
 def c(text, color=None, bold=False):
     parts = []
@@ -24,6 +28,19 @@ def c(text, color=None, bold=False):
     if bold: parts.append(BOLD)
     if parts: return "".join(parts) + text + RESET
     return text
+
+
+def section(title):
+    if not JSON_MODE:
+        print(f"\n{c('━' * 60, CYAN)}")
+        print(f"{c(f'  {title}', CYAN, bold=True)}")
+        print(f"{c('━' * 60, CYAN)}")
+
+
+def out(text):
+    if not JSON_MODE:
+        print(text)
+
 
 def run(cmd, timeout=15):
     try:
@@ -34,17 +51,13 @@ def run(cmd, timeout=15):
     except subprocess.TimeoutExpired:
         return "(timed out)", -1
 
-def section(title):
-    print(f"\n{c('━'*60, CYAN)}")
-    print(f"{c(f'  {title}', CYAN, bold=True)}")
-    print(f"{c('━'*60, CYAN)}")
 
 def check_tool(name):
     return shutil.which(name) is not None
 
+
 def host_info():
     section("Host Information")
-    out = []
     hostname, _ = run(["uname", "-n"])
     kernel, _ = run(["uname", "-a"])
     uptime, _ = run(["uptime", "-p"])
@@ -54,22 +67,35 @@ def host_info():
             for line in f:
                 if line.startswith("PRETTY_NAME="):
                     os_release = line.split("=", 1)[1].strip().strip('"')
-    out.append(f"  Hostname:    {c(hostname, YELLOW)}")
-    out.append(f"  OS:          {os_release}")
-    out.append(f"  Kernel:      {kernel.split()[2] if kernel else 'N/A'}")
-    out.append(f"  Uptime:      {uptime}")
-    out.append(f"  Date:        {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    return "\n".join(out)
+    info = {
+        "hostname": hostname,
+        "os": os_release,
+        "kernel": kernel.split()[2] if kernel else "N/A",
+        "uptime": uptime,
+        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    }
+    DATA["host_info"] = info
+    lines = [
+        f"  Hostname:    {c(hostname, YELLOW)}",
+        f"  OS:          {os_release}",
+        f"  Kernel:      {kernel.split()[2] if kernel else 'N/A'}",
+        f"  Uptime:      {uptime}",
+        f"  Date:        {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+    ]
+    return "\n".join(lines)
+
 
 def listening_ports():
     section("Listening Ports")
     if check_tool("ss"):
-        out, _ = run(["ss", "-tlnp4"])
+        raw, _ = run(["ss", "-tlnp4"])
     elif check_tool("netstat"):
-        out, _ = run(["netstat", "-tlnp4"])
+        raw, _ = run(["netstat", "-tlnp4"])
     else:
+        DATA["listening_ports"] = []
         return c("  Neither ss nor netstat available", RED)
-    lines = out.split("\n")
+    lines = raw.split("\n")
+    ports = []
     result = []
     for line in lines[1:]:
         if line.strip():
@@ -77,103 +103,150 @@ def listening_ports():
             if len(parts) >= 4:
                 addr = parts[3]
                 proc = " ".join(parts[4:]) if len(parts) > 4 else ""
+                ports.append({"address": addr, "process": proc})
                 result.append(f"  {c(addr, GREEN)}  {c(proc, YELLOW)}")
+    DATA["listening_ports"] = ports
     if not result:
         return c("  No listening ports found", YELLOW)
     return "\n".join(result[:30])
 
+
 def established_connections():
     section("Established Connections")
-    if check_tool("ss"):
-        out, _ = run(["ss", "-tenp4", "state", "established"])
-    else:
+    if not check_tool("ss"):
+        DATA["established_connections"] = []
         return c("  ss not available", RED)
-    lines = out.split("\n")
+    raw, _ = run(["ss", "-tenp4", "state", "established"])
+    lines = raw.split("\n")
+    conns = []
     result = []
     for line in lines[1:]:
         if line.strip():
             parts = line.split()
-            if len(parts) >= 4:
+            if len(parts) >= 5:
                 local = parts[3]
                 remote = parts[4]
                 proc = " ".join(parts[6:]) if len(parts) > 6 else ""
+                conns.append({"local": local, "remote": remote, "process": proc})
                 result.append(f"  {c(local, GREEN)} -> {c(remote, YELLOW)}  {c(proc, CYAN)}")
+    DATA["established_connections"] = conns
     if not result:
         return c("  No established connections", YELLOW)
     return "\n".join(result[:20])
 
+
 def suspicious_processes():
     section("Suspicious Processes")
-    out, _ = run(["ps", "aux"])
-    lines = out.split("\n")
-    keywords = ["nc -", "ncat", "socat", "mkfifo", "bash -i", "sh -i", "python -c", "perl -e", "nmap", "cryptominer", "xmrig"]
+    raw, _ = run(["ps", "aux"])
+    lines = raw.split("\n")
+    keywords = ["nc -", "ncat", "socat", "mkfifo", "bash -i", "sh -i",
+                "python -c", "perl -e", "nmap", "cryptominer", "xmrig"]
+    matches = []
     result = []
     for line in lines[1:]:
         lower = line.lower()
         for kw in keywords:
             if kw.lower() in lower:
                 parts = line.split(None, 10)
-                if len(parts) >= 11:
-                    result.append(f"  {c(parts[10][:80], RED)}")
-                elif len(parts) >= 2:
-                    result.append(f"  {c(' '.join(parts[10:])[:80], RED)}")
+                cmd = parts[10] if len(parts) > 10 else line
+                matches.append({"command": cmd.strip()[:80], "match": kw})
+                result.append(f"  {c(cmd[:80], RED)}")
                 break
+    DATA["suspicious_processes"] = matches
     if not result:
-        result.append(c("  No obviously suspicious processes detected", GREEN))
+        return c("  No obviously suspicious processes detected", GREEN)
     return "\n".join(result)
+
 
 def recent_logins():
     section("Recent Logins")
+    DATA["recent_logins"] = []
     if check_tool("last"):
-        out, _ = run(["last", "-n", "20"])
-        lines = out.split("\n")
+        raw, _ = run(["last", "-n", "20"])
+        lines = raw.split("\n")
         result = []
         for line in lines:
             if line.strip() and "wtmp" not in line:
                 result.append(f"  {line}")
+                DATA["recent_logins"].append(line.strip())
         if result:
             return "\n".join(result)
     return c("  No login history available", YELLOW)
 
+
 def sudi_binaries():
     section("SUID Binaries")
-    out, _ = run(["/usr/bin/find", "/", "-perm", "-4000", "-type", "f", "-not", "-path", "*/snap/*", "-not", "-path", "*/proc/*"], timeout=30)
+    raw, _ = run(["/usr/bin/find", "/", "-perm", "-4000", "-type", "f",
+                  "-not", "-path", "*/snap/*", "-not", "-path", "*/proc/*"], timeout=30)
+    binaries = []
     result = []
-    for line in out.split("\n"):
+    for line in raw.split("\n"):
         line = line.strip()
         if line:
+            binaries.append(line)
             result.append(f"  {line}")
+    DATA["suid_binaries"] = binaries[:40]
     if not result:
-        return c("  No SUID binaries found (unlikely — check permissions)", YELLOW)
+        return c("  No SUID binaries found", YELLOW)
     return "\n".join(result[:40])
+
 
 def cron_jobs():
     section("Cron Jobs")
+    entries = []
     result = []
     for user in ["root"] + [x for x in os.listdir("/home") if os.path.isdir(f"/home/{x}")]:
-        out, rc = run(["crontab", "-l", "-u", user], timeout=5)
-        if rc == 0 and out.strip():
-            for line in out.split("\n"):
+        raw, rc = run(["crontab", "-l", "-u", user], timeout=5)
+        if rc == 0 and raw.strip():
+            for line in raw.split("\n"):
                 if line.strip() and not line.startswith("#"):
+                    entries.append({"type": "user", "user": user, "entry": line.strip()})
                     result.append(f"  [{c(user, YELLOW)}] {line}")
     for d in ["/etc/cron.d", "/etc/cron.hourly", "/etc/cron.daily", "/etc/cron.weekly"]:
         if os.path.isdir(d):
             for f in sorted(os.listdir(d)):
+                entries.append({"type": "system", "path": f"{d}/{f}"})
                 result.append(f"  [{c('system', CYAN)}] {d}/{f}")
+    DATA["cron_jobs"] = entries
     if not result:
-        result.append(c("  No crons found", YELLOW))
+        return c("  No crons found", YELLOW)
     return "\n".join(result[:30])
 
-def run_all(target_dir=None):
-    global REPORT_DIR
-    REPORT_DIR = target_dir
-    if REPORT_DIR:
-        Path(REPORT_DIR).mkdir(parents=True, exist_ok=True)
 
-    print(c(f"\n{'='*60}", BOLD))
-    print(c("  SOC TRIAGE REPORT", BOLD))
-    print(c(f"  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", BOLD))
-    print(c(f"{'='*60}", BOLD))
+def save_report(target_dir):
+    global DATA
+    Path(target_dir).mkdir(parents=True, exist_ok=True)
+
+    # Save JSON
+    json_path = f"{target_dir}/soc-triage.json"
+    with open(json_path, "w") as f:
+        json.dump(DATA, f, indent=2)
+
+    # Save individual text reports
+    for name, func in [
+        ("host_info", host_info),
+        ("listening_ports", listening_ports),
+        ("established_connections", established_connections),
+        ("suspicious_processes", suspicious_processes),
+        ("recent_logins", recent_logins),
+        ("suid_binaries", sudi_binaries),
+        ("cron_jobs", cron_jobs),
+    ]:
+        raw = func()
+        with open(f"{target_dir}/{name}.txt", "w") as f:
+            f.write(raw + "\n")
+
+    # Create archive
+    archive = f"{target_dir}/soc-triage-{datetime.now().strftime('%Y%m%d_%H%M%S')}.tar.gz"
+    subprocess.run(["tar", "-czf", archive, "-C", target_dir, "."], capture_output=True)
+    return json_path, archive
+
+
+def run_all(target_dir=None, json_mode=False):
+    global JSON_MODE, REPORT_DIR, DATA
+    JSON_MODE = json_mode
+    REPORT_DIR = target_dir
+    DATA = {"timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
     sections_list = [
         ("host_info", host_info),
@@ -185,31 +258,48 @@ def run_all(target_dir=None):
         ("cron_jobs", cron_jobs),
     ]
 
-    full = ""
+    if not JSON_MODE:
+        print(c(f"\n{'=' * 60}", BOLD))
+        print(c("  SOC TRIAGE REPORT", BOLD))
+        print(c(f"  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", BOLD))
+        print(c(f"{'=' * 60}", BOLD))
+
     for name, func in sections_list:
         result = func()
-        full += result + "\n"
-        print(result)
-        if REPORT_DIR:
-            with open(f"{REPORT_DIR}/{name}.txt", "w") as f:
-                f.write(result)
+        out(result)
 
-    print()
-    print(c("─" * 60, CYAN))
-    print(c("  Triage complete.", GREEN))
+    if JSON_MODE:
+        print(json.dumps(DATA, indent=2))
 
-    if REPORT_DIR:
-        print(c(f"  Reports saved to: {REPORT_DIR}", CYAN))
-        archive = f"{REPORT_DIR}/soc-triage-{datetime.now().strftime('%Y%m%d_%H%M%S')}.tar.gz"
-        subprocess.run(["tar", "-czf", archive, "-C", REPORT_DIR, "."], capture_output=True)
-        print(c(f"  Archive: {archive}", YELLOW))
+    if not JSON_MODE:
+        print()
+        print(c("─" * 60, CYAN))
+        print(c("  Triage complete.", GREEN))
+
+    if target_dir:
+        json_path, archive = save_report(target_dir)
+        if not JSON_MODE:
+            print(c(f"  JSON:   {json_path}", CYAN))
+            print(c(f"  Archive: {archive}", YELLOW))
+
+    return DATA
+
 
 def main():
-    parser = argparse.ArgumentParser(description="Quick host triage for incident response")
+    parser = argparse.ArgumentParser(
+        description="Quick host triage for incident response",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  soc_triage.py                          # Terminal output only
+  soc_triage.py -o ./reports             # Save reports to directory
+  soc_triage.py --json                   # JSON output to stdout
+  soc_triage.py -o ./reports --json      # Both JSON file and terminal output
+""")
     parser.add_argument("-o", "--output", help="Output directory for report files")
+    parser.add_argument("--json", action="store_true", help="Output as JSON to stdout")
     args = parser.parse_args()
-    run_all(target_dir=args.output)
+    run_all(target_dir=args.output, json_mode=args.json)
+
 
 if __name__ == "__main__":
-    import argparse
     main()
