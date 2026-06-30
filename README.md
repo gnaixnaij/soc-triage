@@ -2,6 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Lint](https://img.shields.io/github/actions/workflow/status/gnaixnaij/soc-triage/lint.yml?branch=main&label=lint&logo=github)](https://github.com/gnaixnaij/soc-triage/actions)
+[![Release](https://img.shields.io/github/v/release/gnaixnaij/soc-triage?logo=github)](https://github.com/gnaixnaij/soc-triage/releases)
 [![Python](https://img.shields.io/badge/python-3.6+-3776AB?logo=python&logoColor=white)](https://python.org)
 
 Quick host triage toolkit for incident response. Collects system state information for initial compromise assessment.
